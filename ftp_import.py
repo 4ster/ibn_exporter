@@ -64,15 +64,15 @@ def get_process_numbers(filename):
 
 
 # обновляет метрики
-def update_metrics(exporter_name, data):
+def update_metrics(exporter_name, labels, data):
     global registry
     for key, value in data.items():
         # Gauge - тип параметра - число, которое может увеличиваться или уменьшаться
         # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
         try:
             g = Gauge(
-                "{}_{}".format(
-                    exporter_name,
+                "{}_{}_{}".format(
+                    exporter_name,labels.join('_'),
                     key).replace('-', '_').replace('.', '_'),
                 # коллекция параметров
                 registry=registry
@@ -104,8 +104,9 @@ if __name__ == '__main__':
     max_try = int(environ['max_try'])
     timeout = float(environ['timeout'])
     host = environ['host']
-    service_exporter_name = environ['service_exporter_name']
-    ibn_exporter_name = environ['ibn_exporter_name']
+    exporter_name = environ['exporter_name']
+    service_labels = environ['service_labels'].split(',')
+    ibn_labels = environ['ibn_labels'].split(',')
 
     service_file = environ['service_timeout_file']
     ibn_file = environ['ibn_process_file']
@@ -123,8 +124,8 @@ if __name__ == '__main__':
     registry = CollectorRegistry()
 
     # обновляем метрики
-    update_metrics(service_exporter_name, service_timeouts)
-    update_metrics(ibn_exporter_name, processes_count)
+    update_metrics(exporter_name, [service_labels], service_timeouts)
+    update_metrics(exporter_name, [ibn_labels], processes_count)
 
     # logger.info(service_timeouts)
     # logger.info(processes_count)
