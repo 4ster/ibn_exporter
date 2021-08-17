@@ -82,7 +82,7 @@ def update_metrics(exporter_name, labels, data):
                 registry=registry
             )
             # Если значение параметра - None, то устанавливаем значение метрики в NaN
-            if value == None:
+            if value is None:
                 g.set("NaN")
             else:
                 g.set(value)
