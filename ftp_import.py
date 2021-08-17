@@ -66,15 +66,19 @@ def get_process_numbers(filename):
 # обновляет метрики
 def update_metrics(exporter_name, labels, data):
     global registry
-    for key, value in data.items():
+    for record in data:
+        if 'service' in record.keys():
+            key = record['service']
+            value = record['timeout']
+        else:
+            key = record['account']
+            value = record['proc_count']
         # Gauge - тип параметра - число, которое может увеличиваться или уменьшаться
         # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
         try:
             g = Gauge(
-                "{}_{}_{}".format(
-                    exporter_name,labels.join('_'),
-                    key).replace('-', '_').replace('.', '_'),
-                # коллекция параметров
+                "{}_{}_{}".format(exporter_name, "_".join(labels), key).replace('-', '_').replace('.', '_'),
+                "{}".format(", ".join(labels)),
                 registry=registry
             )
             # Если значение параметра - None, то устанавливаем значение метрики в NaN
@@ -124,8 +128,8 @@ if __name__ == '__main__':
     registry = CollectorRegistry()
 
     # обновляем метрики
-    update_metrics(exporter_name, [service_labels], service_timeouts)
-    update_metrics(exporter_name, [ibn_labels], processes_count)
+    update_metrics(exporter_name, service_labels, service_timeouts)
+    update_metrics(exporter_name, ibn_labels, processes_count)
 
     # logger.info(service_timeouts)
     # logger.info(processes_count)
