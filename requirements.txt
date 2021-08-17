@@ -1,0 +1,3 @@
+python-dotenv
+prometheus_client
+# pandas
