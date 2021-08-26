@@ -11,6 +11,7 @@ from os.path import join, exists
 
 from dotenv import load_dotenv
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from prometheus_client.core import GaugeMetricFamily
 
 
 # скачивает файл и сохраняет во временную директорию
@@ -64,21 +65,19 @@ def get_process_numbers(filename):
 
 
 # обновляет метрики
-def update_metrics(exporter_name, labels, data):
+def update_metrics_services(exporter_name, labels, data):
     global registry
     for record in data:
-        if 'service' in record.keys():
-            key = record['service']
-            value = record['timeout']
-        else:
-            key = record['account']
-            value = record['proc_count']
+        key = record['service']
+        value = record['timeout']
+
         # Gauge - тип параметра - число, которое может увеличиваться или уменьшаться
         # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
         try:
             g = Gauge(
-                "{}_{}_{}".format(exporter_name, "_".join(labels), key).replace('-', '_').replace('.', '_'),
+                "{}_{}".format(exporter_name, key).replace('-', '_').replace('.', '_'),
                 "{}".format(", ".join(labels)),
+                labels=labels,
                 registry=registry
             )
             # Если значение параметра - None, то устанавливаем значение метрики в NaN
@@ -92,6 +91,32 @@ def update_metrics(exporter_name, labels, data):
             pass
 
         push_to_gateway('127.0.0.1:9091', job=exporter_name, registry=registry)
+
+
+def update_metrics_ibn(exporter_name, labels, data):
+    global registry
+
+    g = GaugeMetricFamily(
+        "Процессы IBN",
+        "Количество процессов на каждом аккаунте",
+        registry=registry)
+
+    for record in data:
+        if not ' ' in record:
+            continue
+
+        account = record['account']
+        processes_count = int(record['proc_count']) # FIXME: проверять корректность данных
+
+        # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
+        try:
+            g.add_metric("Email"=account, processes_count)
+            # g.set_to_current_time()
+
+        except ValueError as e:
+            pass
+
+    push_to_gateway('127.0.0.1:9091', job=exporter_name, registry=registry)
 
 
 if __name__ == '__main__':
@@ -128,8 +153,8 @@ if __name__ == '__main__':
     registry = CollectorRegistry()
 
     # обновляем метрики
-    update_metrics(exporter_name, service_labels, service_timeouts)
-    update_metrics(exporter_name, ibn_labels, processes_count)
+    update_metrics_services(exporter_name, service_labels, service_timeouts)
+    update_metrics_ibn(exporter_name, ibn_labels, processes_count)
 
     # logger.info(service_timeouts)
     # logger.info(processes_count)
