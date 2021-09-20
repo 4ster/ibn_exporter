@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-# Экспортер для передачи метрик из ftp в прометей через pushgateway
+# Экспортер для передачи метрик из ftp в grafana
 # import requests
+import csv
 import logging
 import shutil
 import urllib.request as request
@@ -10,12 +11,10 @@ from os import makedirs
 from os.path import join, exists
 
 from dotenv import load_dotenv
-from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
-from prometheus_client.core import GaugeMetricFamily
 
 
 # скачивает файл и сохраняет во временную директорию
-def get_files(host, login, passw, file_name, temp_dir):
+def get_file(host, login, passw, file_name, temp_dir):
     if not exists(temp_dir):
         makedirs(temp_dir)
     new_file = join(temp_dir, file_name)
@@ -35,88 +34,21 @@ def check_hash(file_name, cache_file):
     pass
 
 
-# разбирает файл с таймаутами сервисов и возвращается список записей
-def get_service_times(filename):
-    lst = []
-    with open(filename) as f:
-        for line in f:
-            line = line.strip()
-            if line != '':
-                service, time_out = line.split(' ')
-                lst.append({'service': service, 'timeout': time_out})
-
-    return lst
-
-
-# разбирает файл с ibn-аккаунтами и числом процессов и возвращает список записей
-def get_process_numbers(filename):
-    lst = []
-    with open(filename) as f:
-        for line in f:
-            line = line.strip()
-            if line != '':
-                if ' ' in line:
-                    account, proc_count = line.split(' ')
-                    lst.append({'account': account, 'proc_count': proc_count})
-                else:
-                    logger.warning("Can't split line \"{}\" into key-value".format(line))
-
-    return lst
-
-
-# обновляет метрики
-def update_metrics_services(exporter_name, labels, data):
-    global registry
-    for record in data:
-        key = record['service']
-        value = record['timeout']
-
-        # Gauge - тип параметра - число, которое может увеличиваться или уменьшаться
-        # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
-        try:
-            g = Gauge(
-                "{}_{}".format(exporter_name, key).replace('-', '_').replace('.', '_'),
-                "{}".format(", ".join(labels)),
-                labels=labels,
-                registry=registry
-            )
-            # Если значение параметра - None, то устанавливаем значение метрики в NaN
-            if value is None:
-                g.set("NaN")
-            else:
-                g.set(value)
-            # g.set_to_current_time()
-
-        except ValueError as e:
-            pass
-
-        push_to_gateway('127.0.0.1:9091', job=exporter_name, registry=registry)
-
-
-def update_metrics_ibn(exporter_name, labels, data):
-    global registry
-
-    g = GaugeMetricFamily(
-        "Процессы IBN",
-        "Количество процессов на каждом аккаунте",
-        registry=registry)
-
-    for record in data:
-        if not ' ' in record:
-            continue
-
-        account = record['account']
-        processes_count = int(record['proc_count']) # FIXME: проверять корректность данных
-
-        # Оборачиваем в try-except, чтобы не добавлять одни и те же метрики в колекцию, если они уже там есть
-        try:
-            g.add_metric("Email"=account, processes_count)
-            # g.set_to_current_time()
-
-        except ValueError as e:
-            pass
-
-    push_to_gateway('127.0.0.1:9091', job=exporter_name, registry=registry)
+# преобразовывает скачанный файл в csv
+def convert_to_csv(source_file, dest_file):
+    # TODO: error handling
+    with open(join(dest_file), mode='w') as out_file:
+        out_writer = csv.writer(out_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        out_writer.writerow(['Аккаунт', 'Количество процессов'])
+        with open(source_file) as f:
+            for line in f:
+                line = line.strip()
+                if line != '':
+                    if ' ' in line:
+                        account, proc_count = line.split(' ')
+                        out_writer.writerow([account, proc_count])
+                    else:
+                        logger.warning("Can't split line \"{}\" into key-value".format(line))
 
 
 if __name__ == '__main__':
@@ -134,27 +66,13 @@ if __name__ == '__main__':
     timeout = float(environ['timeout'])
     host = environ['host']
     exporter_name = environ['exporter_name']
-    service_labels = environ['service_labels'].split(',')
     ibn_labels = environ['ibn_labels'].split(',')
-
-    service_file = environ['service_timeout_file']
     ibn_file = environ['ibn_process_file']
-
-    # скачиваем файлы с ftp во временную папку
+    write_file_path = environ['write_file_path']
+    temp_dir = environ["temp_dir"]
+    # скачиваем файл с ftp во временную папку
     # TODO: переделать - проверять хеши, если данные не изменились - ничего дальше не делать
-    st = get_files(host, login, password, service_file, "./temp")
-    pc = get_files(host, login, password, ibn_file, "./temp")
+    source_file = get_file(host, login, password, ibn_file, temp_dir)
 
-    # получаем информацию из скачанных файлов
-    service_timeouts = get_service_times(st)
-    processes_count = get_process_numbers(pc)
-
-    # определяем коллекцию метрик promeheus
-    registry = CollectorRegistry()
-
-    # обновляем метрики
-    update_metrics_services(exporter_name, service_labels, service_timeouts)
-    update_metrics_ibn(exporter_name, ibn_labels, processes_count)
-
-    # logger.info(service_timeouts)
-    # logger.info(processes_count)
+    # преобразовываем файл в формат csv
+    convert_to_csv(source_file, write_file_path)
