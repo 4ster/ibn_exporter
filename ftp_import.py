@@ -92,7 +92,10 @@ def my_auth_handler(url, method, timeout, headers, data):
     global prom_username
     global prom_passw
 
-    return basic_auth_handler(url, method, timeout, headers, data, prom_username, prom_passw)
+    if prom_username is None:
+        return basic_auth_handler(url, method, timeout, headers, data, prom_username, prom_passw)
+    else:
+        return basic_auth_handler(url, method, timeout, headers, data)
 
 if __name__ == '__main__':
     # инициализируем лог
@@ -114,8 +117,12 @@ if __name__ == '__main__':
     ibn_file = environ['ibn_process_file']
     write_file_path = environ['write_file_path']
     temp_dir = environ["temp_dir"]
-    prom_username = environ["prom_username"]
-    prom_passw = environ["prom_passw"]
+    try:
+        prom_username = environ["prom_username"]
+        prom_passw = environ["prom_passw"]
+    except KeyError as e:
+        prom_username = None
+        prom_passw = None
     # скачиваем файл с ftp во временную папку
     # TODO: переделать - проверять хеши, если данные не изменились - ничего дальше не делать
     source_file = get_file(host, login, password, ibn_file, temp_dir)
