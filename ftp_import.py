@@ -84,7 +84,7 @@ def convert_to_csv(source_file, dest_file):
                         out_writer.writerow([account, proc_count])
                         pc.append({"account": account, "proc_count": proc_count})
                     else:
-                        logger.warning("Can't split line \"{}\" into key-value".format(line))
+                        logger.info("Can't split line \"{}\" into key-value".format(line))
 
     return pc
 
